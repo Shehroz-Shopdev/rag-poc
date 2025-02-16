@@ -1,0 +1,15 @@
+beautifulsoup4==4.13.3
+dropbox==12.0.2
+fastapi==0.115.8
+langchain==0.3.18
+langchain_community==0.3.17
+langchain_core==0.3.35
+langchain_groq==0.2.4
+langchain_huggingface==0.1.2
+langgraph==0.2.73
+pandas==2.2.3
+pydantic==2.10.6
+python-dotenv==1.0.1
+Requests==2.32.3
+schedule==1.2.2
+uvicorn==0.34.0

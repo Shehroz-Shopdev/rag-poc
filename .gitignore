@@ -1,0 +1,5 @@
+.vercel
+dropbox_cache
+faiss_index
+__pycache__
+.env
