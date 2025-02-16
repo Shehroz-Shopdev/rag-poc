@@ -74,7 +74,7 @@ async def scrap_url(request: ScrapRequest):
         documents = rag_system.process_file(data)  
         rag_system.vector_store.add_documents(documents)
         
-        rag_system.vector_store.save_local(rag_system.vector_store_path)
+        # rag_system.vector_store.save_local(rag_system.vector_store_path)
         
         return {"status": "success", "message": "Data added to knowledge base"}
     except Exception as e:
