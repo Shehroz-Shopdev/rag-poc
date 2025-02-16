@@ -42,7 +42,6 @@ class DropboxRAG:
         vector_store_path: str = "faiss_index",
         cache_dir: str = "dropbox_cache"
     ):
-        self.dbx = dropbox.Dropbox(access_token)
         self.vector_store_path = vector_store_path
         self.cache_dir = cache_dir
         
