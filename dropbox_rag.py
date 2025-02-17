@@ -1,11 +1,11 @@
 import os
-import json
-import io
-import hashlib
+# import json
+# import io
+# import hashlib
 import datetime
-import schedule
-import time
-from typing import List, Dict, Optional, Tuple
+# import schedule
+# import time
+from typing import List, Tuple
 from dataclasses import dataclass
 import dropbox
 from dropbox.files import FileMetadata, FolderMetadata
@@ -29,23 +29,18 @@ if not os.environ.get("GROQ_API_KEY"):
 llm = ChatGroq(model_name="llama3-8b-8192")
 
 @dataclass
-class DropboxFile:
+class File:
     path: str
     name: str
     content_hash: str
     modified_time: datetime.datetime
 
-class DropboxRAG:
+class RAG:
     def __init__(
         self,
-        access_token: str,
         vector_store_path: str = "faiss_index",
-        cache_dir: str = "dropbox_cache"
     ):
         self.vector_store_path = vector_store_path
-        self.cache_dir = cache_dir
-        
-        os.makedirs(cache_dir, exist_ok=True)
         
         self.embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-mpnet-base-v2"
@@ -69,44 +64,6 @@ class DropboxRAG:
             [dummy_doc],
             self.embeddings)
     
-    def list_files(self, folder_path: str = "") -> List[DropboxFile]:
-        """List files in the specified Dropbox folder"""
-        files = []
-        try:
-            result = self.dbx.files_list_folder(folder_path, recursive=True)
-            while True:
-                for entry in result.entries:
-                    if isinstance(entry, FileMetadata):
-                        files.append(DropboxFile(
-                            path=entry.path_display,
-                            name=entry.name,
-                            content_hash=entry.content_hash,
-                            modified_time=entry.server_modified
-                        ))
-                
-                if not result.has_more:
-                    break
-                    
-                result = self.dbx.files_list_folder_continue(result.cursor)
-        
-        except dropbox.exceptions.ApiError as e:
-            print(f"Error listing files: {str(e)}")
-        
-        return files
-    
-    def download_file(self, file_path: str) -> str:
-        """Download file from Dropbox and return local path"""
-        local_path = os.path.join(self.cache_dir, os.path.basename(file_path))
-        try:
-            metadata, response = self.dbx.files_download(file_path)
-            with open(local_path, 'wb') as f:
-                f.write(response.content)
-            return local_path
-            
-        except dropbox.exceptions.ApiError as e:
-            print(f"Error downloading {file_path}: {str(e)}")
-            return None
-
     def process_file(self, data) -> List[Document]:
         """Enhanced file processing with HTML content handling"""
         try:
@@ -207,11 +164,9 @@ class DropboxRAG:
     
     def update_knowledge_base(
         self,
-        folder_path: str = "",
-        force_update: bool = False
     ) -> Tuple[int, int]:
         """Update knowledge base with new or modified files"""
-        files = self.list_files(folder_path)
+
         
         metadata_path = os.path.join(self.cache_dir, 'metadata.txt')
         existing_metadata = {}
@@ -225,34 +180,7 @@ class DropboxRAG:
         processed_files = 0
         
         new_metadata = {}
-        for file in files:
-            needs_update = (
-                force_update or
-                file.path not in existing_metadata or
-                existing_metadata[file.path] != file.content_hash
-            )
-            
-            if needs_update:
-                try:
-                    # Download and process file
-                    local_path = self.download_file(file.path)
-                    print(local_path)
-                    if local_path:
-                        new_docs = self.process_file(local_path)
-                        print(f"Documents to add: {new_docs}")
-                        self.vector_store.add_documents(new_docs)
-                        
-                        new_metadata[file.path] = file.content_hash
-                        updated_files += 1
-                        print(f"Updated: {file.name}")
-                    
-                        
-                except Exception as e:
-                    print(f"Error processing {file.name}: {str(e)}")
-            else:
-                new_metadata[file.path] = existing_metadata[file.path]
-            
-            processed_files += 1
+      
         
         with open(metadata_path, 'w') as f:
             for path, hash_value in new_metadata.items():
@@ -266,9 +194,9 @@ class DropboxRAG:
         """Query the knowledge base"""
         return self.vector_store.similarity_search(query, k=k)
 
-DROPBOX_ACCESS_TOKEN = os.getenv("DROPBOX_ACCESS_TOKEN")
+
    
-rag_system = DropboxRAG(DROPBOX_ACCESS_TOKEN)
+rag_system = RAG()
 
 @tool(response_format="content_and_artifact")
 def retrieve(query: str):
@@ -283,25 +211,25 @@ def retrieve(query: str):
 
 def query_or_respond(state: MessagesState):
     """Generate tool call for retrieval or respond."""
-    retrieve_tool = {
-        "type": "function",
-        "function": {
-            "name": "retrieve",
-            "description": "Retrieve information from the knowledge base",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The query to search for"
-                    }
-                },
-                "required": ["query"]
-            }
-        }
-    }
+    # retrieve_tool = {
+    #     "type": "function",
+    #     "function": {
+    #         "name": "retrieve",
+    #         "description": "Retrieve information from the knowledge base",
+    #         "parameters": {
+    #             "type": "object",
+    #             "properties": {
+    #                 "query": {
+    #                     "type": "string",
+    #                     "description": "The query to search for"
+    #                 }
+    #             },
+    #             "required": ["query"]
+    #         }
+    #     }
+    # }
     
-    llm_with_tools = llm.bind_tools([retrieve])
+    # llm_with_tools = llm.bind_tools([retrieve])
     
     last_message = state["messages"][-1].content.lower()
     retrieval_triggers = [
@@ -407,58 +335,3 @@ def chat(message: str, conversation_history: List = None):
         return responses[-1]
     return None
 
-def setup_dropbox_updates(folder_path: str = "", update_interval: int = 1):
-    total, updated = rag_system.update_knowledge_base(folder_path)
-
-    
-    # Schedule periodic updates
-    # schedule.every(update_interval).hours.do(update_job)
-    
-    # # Run scheduler in a separate thread
-    # import threading
-    # def run_scheduler():
-    #     while True:
-    #         schedule.run_pending()
-    #         time.sleep(60)
-    
-    # scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-    # scheduler_thread.start()
-
-# def main():
-#     """Main function to run the chatbot with Dropbox integration"""
-#     print("\nInitializing Dropbox RAG Chatbot...")
-    
-#     # Setup Dropbox monitoring (optionally specify a folder_path)
-#     setup_dropbox_updates(folder_path="", update_interval=1)
-    
-#     print("\nWelcome to the Dropbox RAG Chatbot! Type 'exit' to end the conversation.")
-#     print("-----------------------------------------------------------")
-
-#     conversation_history = []
-    
-#     while True:
-#         user_input = input("\nYou: ").strip()
-        
-#         if user_input.lower() in ['exit', 'quit', 'bye']:
-#             print("\nGoodbye!")
-#             break
-        
-#         if not user_input:
-#             continue
-        
-#         try:
-#             response = chat(user_input, conversation_history)
-            
-#             if response:
-#                 print(f"\nAssistant: {response.content}")
-#                 conversation_history.extend([
-#                     HumanMessage(content=user_input),
-#                     response
-#                 ])
-                
-#         except Exception as e:
-#             print(f"\nError: {str(e)}")
-#             print("Please try again.")
-
-# if __name__ == "__main__":
-#     main()

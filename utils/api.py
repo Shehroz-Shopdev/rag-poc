@@ -1,9 +1,9 @@
 import os
 from fastapi import FastAPI, Query, HTTPException  # Added HTTPException
 from dotenv import load_dotenv
-from typing import List, Dict
-from langchain_core.messages import HumanMessage
-from dropbox_rag import DropboxRAG, chat, setup_dropbox_updates, rag_system  # Import your chatbot logic
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dropbox_rag import chat, rag_system
 from pydantic import BaseModel
 from urllib.parse import urlparse  # Added urlparse
 import requests
