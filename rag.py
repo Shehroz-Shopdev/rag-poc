@@ -1,39 +1,21 @@
 import os
-# import json
-# import io
-# import hashlib
-import datetime
-# import schedule
-# import time
 from typing import List, Tuple
-from dataclasses import dataclass
-import dropbox
-from dropbox.files import FileMetadata, FolderMetadata
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.document_loaders import JSONLoader
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
 from langgraph.graph import MessagesState, StateGraph, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from bs4 import BeautifulSoup
-import pandas as pd
 
 if not os.environ.get("GROQ_API_KEY"):
     import getpass
     os.environ["GROQ_API_KEY"] = getpass.getpass("Enter API key for Groq: ")
 
 llm = ChatGroq(model_name="llama3-8b-8192")
-
-@dataclass
-class File:
-    path: str
-    name: str
-    content_hash: str
-    modified_time: datetime.datetime
 
 class RAG:
     def __init__(
