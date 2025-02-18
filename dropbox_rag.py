@@ -58,8 +58,8 @@ class DropboxRAG:
     def load_or_create_vector_store(self) -> FAISS:
         """Enhanced vector store with better similarity settings"""
         dummy_doc = Document(
-            page_content="Initial dummy document",
-            metadata={"source": "dummy"}
+            page_content="Wowcher Limited is the second largest British e-commerce deal of the day site in the United Kingdom and Ireland. ",
+            metadata={"source": "wikipedia"}
         )
         if os.path.exists(self.vector_store_path):
             return FAISS.load_local(
@@ -475,7 +475,7 @@ def query_or_respond(state: MessagesState):
         retrieved_info = retrieve(query)
         
         system_prompt = (
-            "You are a helpful assistant. Using the following retrieved information, "
+            "You are a helpful chatbot that have been trained on products from Wowcher which is an e-commerce deal of the day site. Using the following retrieved information, "
             "provide a natural and informative response to the user's query. "
             f"Retrieved information: {retrieved_info}\n\n"
             "Remember to be concise and focus on relevant details. "

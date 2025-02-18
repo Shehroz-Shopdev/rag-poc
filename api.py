@@ -73,7 +73,7 @@ def query_chatbot(chat_request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/scrap")
+@app.post("/scrape")
 async def scrap_url(request: ScrapRequest):
     try:
         base_url = generate_base_url(request.url)
