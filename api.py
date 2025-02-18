@@ -45,20 +45,33 @@ def generate_base_url(page_url):
     else:
         return None 
 
-
-
 class ScrapRequest(BaseModel):
     url: str
 
+class ChatRequest(BaseModel):
+    question: str
+    conversation_id: str  
+
 @app.get("/")
 def home():
-    return {"message": "Welcome to the Dropbox RAG Chatbot API!"}
+    return {"message": "Welcome to the Wowcher Chatbot API!"}
 
-@app.get("/query")
-def query_chatbot(question: str = Query(..., title="User Query")):
+@app.post("/query")
+def query_chatbot(chat_request: ChatRequest):
     """Handles chatbot queries"""
-    response = chat(question)
-    return {"response": response.content if response else "No response"}
+    try:
+        response = chat(chat_request.question, chat_request.conversation_id)
+
+        if response:   
+            return {
+                "response": response,
+            }
+        else:
+            return {
+                "response": "No response",
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/scrap")
 async def scrap_url(request: ScrapRequest):
@@ -73,9 +86,7 @@ async def scrap_url(request: ScrapRequest):
         
         documents = rag_system.process_file(data)  
         rag_system.vector_store.add_documents(documents)
-        
-        # rag_system.vector_store.save_local(rag_system.vector_store_path)
-        
+                
         return {"status": "success", "message": "Data added to knowledge base"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

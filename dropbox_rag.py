@@ -21,12 +21,15 @@ from langgraph.graph import MessagesState, StateGraph, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from bs4 import BeautifulSoup
 import pandas as pd
+from langgraph.checkpoint.memory import MemorySaver
 
 if not os.environ.get("GROQ_API_KEY"):
     import getpass
     os.environ["GROQ_API_KEY"] = getpass.getpass("Enter API key for Groq: ")
 
 llm = ChatGroq(model_name="llama3-8b-8192")
+
+memory = MemorySaver()
 
 @dataclass
 class DropboxFile:
@@ -107,10 +110,114 @@ class DropboxRAG:
             print(f"Error downloading {file_path}: {str(e)}")
             return None
 
+    # def process_file(self, data) -> List[Document]:
+    #     """Enhanced file processing with HTML content handling"""
+    #     try:
+                    
+    #         documents = []
+            
+    #         if 'mainDeal' in data:
+    #             deal = data['mainDeal']
+
+    #             description_text = ""
+    #             if deal.get('description'):
+    #                 soup = BeautifulSoup(deal['description'], 'html.parser')
+                    
+    #                 sections = []
+                    
+    #                 if soup.find('h2'):
+    #                     sections.append(soup.find('h2').get_text(strip=True))
+                    
+    #                 for heading in soup.find_all('h3'):
+    #                     section_text = [heading.get_text(strip=True)]
+                        
+    #                     next_element = heading.find_next_sibling()
+    #                     while next_element and next_element.name != 'h3':
+    #                         if next_element.name == 'ul':
+    #                             bullets = [f"• {li.get_text(strip=True)}" 
+    #                                      for li in next_element.find_all('li')]
+    #                             section_text.append("\n".join(bullets))
+    #                         elif next_element.name == 'p':
+    #                             section_text.append(next_element.get_text(strip=True))
+    #                         next_element = next_element.find_next_sibling()
+                        
+    #                     sections.append("\n".join(section_text))
+                    
+    #                 for p in soup.find_all('p', recursive=False):
+    #                     sections.append(p.get_text(strip=True))
+                    
+    #                 description_text = "\n\n".join(sections)
+
+    #             product_features_text = ""
+    #             if deal.get('highlights'):
+    #                 for highlight in deal['highlights']:
+    #                     soup = BeautifulSoup(highlight, 'html.parser')
+    #                     heading = soup.find('b')
+    #                     if heading:
+    #                         heading_text = heading.get_text(strip=True)
+    #                         heading.decompose()
+    #                         detail_text = soup.get_text(strip=True)
+    #                         product_features_text += f"{heading_text}: {detail_text}\n"
+
+    #                 cleaned_terms = []
+    
+    #                 for term in terms:
+    #                     if not term.strip():
+    #                         continue
+                            
+    #                     # Parse and clean any HTML
+    #                     soup = BeautifulSoup(term, 'html.parser')
+    #                     clean_term = soup.get_text(strip=True)
+                        
+    #                     # Skip empty terms after HTML cleaning
+    #                     if not clean_term:
+    #                         continue
+                            
+    #                     cleaned_terms.append(clean_term)
+                    
+    #                 # Join with newlines and ensure consistent formatting
+    #                 terms_text = "\n".join(cleaned_terms)
+
+
+    #             sections = {
+    #                 'title': deal.get('title', ''),
+    #                 'headline': deal.get('headline', ''),
+    #                 'description': description_text,
+    #                 'product_features': product_features_text,
+    #                 'terms_and_conditions': terms_text
+    #             }
+                
+    #             for section_name, content in sections.items():
+    #                 if content:
+    #                     text_splitter = RecursiveCharacterTextSplitter(
+    #                         chunk_size=2000,
+    #                         chunk_overlap=200,
+    #                         separators=["\n\n", "\n", ". ", " ", ""]
+    #                     )
+                        
+    #                     chunks = text_splitter.split_text(content)
+                        
+    #                     for chunk in chunks:
+    #                         doc = Document(
+    #                             page_content=chunk,
+    #                             metadata={
+    #                                 'source': 'wowcher',
+    #                                 'section': section_name,
+    #                                 'deal_id': deal.get('id'),
+    #                                 'category': deal.get('category').get('name')
+    #                             }
+    #                         )
+    #                         documents.append(doc)
+            
+    #         return documents
+            
+    #     except Exception as e:
+    #         print(f"Error processing {file_path}: {str(e)}")
+    #         return []
+
     def process_file(self, data) -> List[Document]:
         """Enhanced file processing with HTML content handling"""
         try:
-                    
             documents = []
             
             if 'mainDeal' in data:
@@ -132,7 +239,7 @@ class DropboxRAG:
                         while next_element and next_element.name != 'h3':
                             if next_element.name == 'ul':
                                 bullets = [f"• {li.get_text(strip=True)}" 
-                                         for li in next_element.find_all('li')]
+                                        for li in next_element.find_all('li')]
                                 section_text.append("\n".join(bullets))
                             elif next_element.name == 'p':
                                 section_text.append(next_element.get_text(strip=True))
@@ -156,23 +263,48 @@ class DropboxRAG:
                             detail_text = soup.get_text(strip=True)
                             product_features_text += f"{heading_text}: {detail_text}\n"
 
+                # Enhanced terms processing
                 terms_text = ""
                 if deal.get('terms'):
-                    valid_terms = [term for term in deal['terms'] if term.strip()]
-                    terms_text = "\n".join(f"{term}" for term in valid_terms)
-
+                    cleaned_terms = []
+                    for term in deal['terms']:
+                        if not term.strip():
+                            continue
+                        
+                        # Parse and clean any HTML
+                        soup = BeautifulSoup(term, 'html.parser')
+                        clean_term = soup.get_text(strip=True)
+                        
+                        # Skip empty terms after HTML cleaning
+                        if not clean_term:
+                            continue
+                        
+                        cleaned_terms.append(clean_term)
+                    
+                    terms_text = "\n".join(cleaned_terms)
+                base_metadata = {
+                    'source': 'wowcher',
+                    'deal_id': deal.get('id'),
+                    'category': deal.get('category', {}).get('name'),
+                    'subcategory': deal.get('subCategory', {}).get('name'),
+                    'price': deal.get('price'),
+                    'original_price': deal.get('originalPrice'),
+                    'discount_percentage': deal.get('discountPercentage'),
+                    'totalBought': deal.get('totalBought'),
+                    'totalRemaining': deal.get('totalRemaining')
+                }
                 sections = {
                     'title': deal.get('title', ''),
                     'headline': deal.get('headline', ''),
                     'description': description_text,
                     'product_features': product_features_text,
-                    'terms': terms_text
+                    'terms_and_conditions': terms_text
                 }
                 
                 for section_name, content in sections.items():
                     if content:
                         text_splitter = RecursiveCharacterTextSplitter(
-                            chunk_size=1000,
+                            chunk_size=2000,
                             chunk_overlap=200,
                             separators=["\n\n", "\n", ". ", " ", ""]
                         )
@@ -183,10 +315,9 @@ class DropboxRAG:
                             doc = Document(
                                 page_content=chunk,
                                 metadata={
+                                    **base_metadata,
                                     'source': 'wowcher',
                                     'section': section_name,
-                                    'deal_id': deal.get('id'),
-                                    'category': deal.get('category').get('name')
                                 }
                             )
                             documents.append(doc)
@@ -194,14 +325,14 @@ class DropboxRAG:
             return documents
             
         except Exception as e:
-            print(f"Error processing {file_path}: {str(e)}")
+            print(f"Error processing file: {str(e)}")
             return []
 
     def query(self, query: str, k: int = 3) -> List[Document]:
         """Enhanced query method with better context retrieval"""
         return self.vector_store.similarity_search(
             query,
-            k=k,
+            k=5,
             filter=None  
         )
     
@@ -273,6 +404,7 @@ rag_system = DropboxRAG(DROPBOX_ACCESS_TOKEN)
 @tool(response_format="content_and_artifact")
 def retrieve(query: str):
     """Retrieve information from the knowledge base."""
+    print(f"query: {query}")
     retrieved_docs = rag_system.query(query, k=2)
     print(f"Retrieved documents: {retrieved_docs}")
     serialized = "\n\n".join(
@@ -280,6 +412,29 @@ def retrieve(query: str):
         for doc in retrieved_docs
     )
     return serialized, retrieved_docs
+
+def contextualize_query(current_query: str, state: MessagesState) -> str:
+    """
+    Contextualizes the current query based on conversation history.
+    """
+    recent_messages = state["messages"][-3:]  
+    
+    system_prompt = (
+        "Given the conversation history and current query, create a contextualized search query. "
+        "If the current query contains pronouns or references to previous topics, "
+        "incorporate the relevant context into a clear, specific query."
+    )
+    
+    context_messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content="Conversation history:\n" + 
+            "\n".join([f"{'User' if isinstance(m, HumanMessage) else 'Assistant'}: {m.content}" 
+                      for m in recent_messages[:-1]]) +
+            f"\n\nCurrent query: {current_query}\n\nGenerate a contextualized search query.")
+    ]
+    
+    contextualized = llm.invoke(context_messages)
+    return contextualized.content
 
 def query_or_respond(state: MessagesState):
     """Generate tool call for retrieval or respond."""
@@ -302,8 +457,8 @@ def query_or_respond(state: MessagesState):
     }
     
     llm_with_tools = llm.bind_tools([retrieve])
-    
     last_message = state["messages"][-1].content.lower()
+    
     retrieval_triggers = [
         "explain", "what", "how", "where", "when", "who",
         "tell me about", "describe", "find", "search",
@@ -316,26 +471,35 @@ def query_or_respond(state: MessagesState):
     ) or len(last_message.split()) >= 3
     
     if should_retrieve:
-        query = last_message
+        query = contextualize_query(last_message, state)
         retrieved_info = retrieve(query)
         
         system_prompt = (
             "You are a helpful assistant. Using the following retrieved information, "
             "provide a natural and informative response to the user's query. "
             f"Retrieved information: {retrieved_info}\n\n"
-            "Remember to be concise and focus on relevant details."
+            "Remember to be concise and focus on relevant details. "
+            "Also consider the previous conversation context when responding."
         )
         
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=last_message)
+        previous_messages = [
+            msg for msg in state["messages"] 
+            if not isinstance(msg, SystemMessage)
         ]
+
+        print(f"retrieved_info: {retrieved_info}")
+        
+        messages = [
+            SystemMessage(content=system_prompt)
+        ] + previous_messages
+
         
         response = llm.invoke(messages)
     else:
         response = llm.invoke(state["messages"])
     
     return {"messages": [response]}
+
 
 def generate(state: MessagesState):
     """Generate answer using conversation history."""
@@ -379,86 +543,27 @@ def create_chat_graph():
         "query_or_respond",
         tools_condition,
         {END: END, "tools": "tools"}
-    )
+    )   
     
     graph_builder.add_edge("tools", "generate")
     graph_builder.add_edge("generate", END)
 
-    return graph_builder.compile()
+    return graph_builder.compile(checkpointer=memory)
 
-def chat(message: str, conversation_history: List = None):
+def chat(message: str, thread_id: str):
     """Chat function that maintains history and processes responses."""
-    if conversation_history is None:
-        conversation_history = []
-    
-    messages = conversation_history + [HumanMessage(content=message)]
-    
+    messages = []
     graph = create_chat_graph()
     responses = []
     
-    for step in graph.stream(
-        {"messages": messages},
-        stream_mode="values"
-    ):
-        if "messages" in step and step["messages"]:
-            responses.append(step["messages"][-1])
+    response = graph.invoke(
+        {"messages": HumanMessage(content=message)}, 
+        {"configurable": {"thread_id": thread_id}} 
+    )
     
-    if responses:
-        return responses[-1]
+    if response:
+        return response["messages"][-1].content
     return None
 
 def setup_dropbox_updates(folder_path: str = "", update_interval: int = 1):
     total, updated = rag_system.update_knowledge_base(folder_path)
-
-    
-    # Schedule periodic updates
-    # schedule.every(update_interval).hours.do(update_job)
-    
-    # # Run scheduler in a separate thread
-    # import threading
-    # def run_scheduler():
-    #     while True:
-    #         schedule.run_pending()
-    #         time.sleep(60)
-    
-    # scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-    # scheduler_thread.start()
-
-# def main():
-#     """Main function to run the chatbot with Dropbox integration"""
-#     print("\nInitializing Dropbox RAG Chatbot...")
-    
-#     # Setup Dropbox monitoring (optionally specify a folder_path)
-#     setup_dropbox_updates(folder_path="", update_interval=1)
-    
-#     print("\nWelcome to the Dropbox RAG Chatbot! Type 'exit' to end the conversation.")
-#     print("-----------------------------------------------------------")
-
-#     conversation_history = []
-    
-#     while True:
-#         user_input = input("\nYou: ").strip()
-        
-#         if user_input.lower() in ['exit', 'quit', 'bye']:
-#             print("\nGoodbye!")
-#             break
-        
-#         if not user_input:
-#             continue
-        
-#         try:
-#             response = chat(user_input, conversation_history)
-            
-#             if response:
-#                 print(f"\nAssistant: {response.content}")
-#                 conversation_history.extend([
-#                     HumanMessage(content=user_input),
-#                     response
-#                 ])
-                
-#         except Exception as e:
-#             print(f"\nError: {str(e)}")
-#             print("Please try again.")
-
-# if __name__ == "__main__":
-#     main()
