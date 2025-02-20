@@ -43,6 +43,7 @@ class ScrapRequest(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     conversation_id: str  
+    deal_id: str
 
 @app.get("/")
 def home():
@@ -52,7 +53,7 @@ def home():
 def query_chatbot(chat_request: ChatRequest):
     """Handles chatbot queries"""
     try:
-        response = chat(chat_request.question, chat_request.conversation_id)
+        response = chat(chat_request.question, chat_request.conversation_id, chat_request.deal_id)
 
         if response:   
             return {

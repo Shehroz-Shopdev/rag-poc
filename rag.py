@@ -164,20 +164,27 @@ class RAG:
             print(f"Error processing file: {str(e)}")
             return []
 
-    def query(self, query: str, k: int = 3) -> List[Document]:
+    def query(self, query: str, deal_id: Optional[str] = None, k: int = 5) -> List[Document]:
         """Enhanced query method with better context retrieval"""
+        if deal_id:
+            filter_dict = {"deal_id": deal_id}
+            return self.vector_store.similarity_search(
+                query,
+                k=k,
+                filter=filter_dict
+            )
         return self.vector_store.similarity_search(
             query,
-            k=5,
+            k=k,
             filter=None  
         )
    
 rag_system = RAG()
 
-def retrieve(query: str):
+def retrieve(query: str, deal_id: Optional[str] = None):
     """Retrieve information from the knowledge base."""
     print(f"query: {query}")
-    retrieved_docs = rag_system.query(query, k=2)
+    retrieved_docs = rag_system.query(query, deal_id, k=5)
     print(f"Retrieved documents: {retrieved_docs}")
     serialized = "\n\n".join(
         (f"Source: {doc.metadata}\n" f"Content: {doc.page_content}")
@@ -213,6 +220,14 @@ def query_or_respond(state: MessagesState):
     
     llm_with_tools = llm.bind_tools([retrieve])
     last_message = state["messages"][-1].content.lower()
+
+    deal_id = None
+    if "///deal_id:" in last_message:
+        try:
+            deal_id = last_message.split("///deal_id:")[1].split()[0].strip()
+            last_message = last_message.replace(f"///deal_id:{deal_id}", "").strip()
+        except:
+            pass
     
     retrieval_triggers = [
         "explain", "what", "how", "where", "when", "who",
@@ -226,8 +241,11 @@ def query_or_respond(state: MessagesState):
     ) or len(last_message.split()) >= 3
     
     if should_retrieve:
-        query = contextualize_query(last_message, state)
-        serialized, retrieved_info = retrieve(query)
+        query = last_message
+        if not deal_id:
+            query = contextualize_query(last_message, state)
+        serialized, retrieved_info = retrieve(query, deal_id)
+
         
         if len(retrieved_info) == 1 and retrieved_info[0].metadata.get("source") == "wikipedia":
             return {"messages": [AIMessage(content="Sorry, I couldn't find relevant information for your query.")]}
@@ -308,12 +326,14 @@ def create_chat_graph():
 
     return graph_builder.compile(checkpointer=memory)
 
-def chat(message: str, thread_id: str):
+def chat(message: str, thread_id: str, deal_id: Optional[str] = None):
     """Chat function that maintains history and processes responses."""
-    messages = []
     graph = create_chat_graph()
-    responses = []
+
+    if deal_id:
+        message += f"///deal_id:{deal_id}"
     
+
     response = graph.invoke(
         {"messages": HumanMessage(content=message)}, 
         {"configurable": {"thread_id": thread_id}} 
