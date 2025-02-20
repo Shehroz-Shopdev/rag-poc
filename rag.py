@@ -167,7 +167,7 @@ class RAG:
     def query(self, query: str, deal_id: Optional[str] = None, k: int = 5) -> List[Document]:
         """Enhanced query method with better context retrieval"""
         if deal_id:
-            filter_dict = {"deal_id": deal_id}
+            filter_dict = {"deal_id": int(deal_id)}
             return self.vector_store.similarity_search(
                 query,
                 k=k,

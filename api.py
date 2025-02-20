@@ -43,7 +43,7 @@ class ScrapRequest(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     conversation_id: str  
-    deal_id: str
+    deal_id: int
 
 @app.get("/")
 def home():
