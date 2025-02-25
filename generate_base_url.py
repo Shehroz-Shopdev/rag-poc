@@ -8,19 +8,19 @@ def generate_base_url(page_url):
     
     if len(path_parts) >= 5:
         region_or_deal_type = path_parts[1]  
-        category = path_parts[2] 
-        subcategory = path_parts[3] 
+        category = path_parts[2]  
+        subcategory = path_parts[3]  
         product_id = path_parts[4]  
 
         if region_or_deal_type == "deal":
             if category == "travel":
-                api_category = "travel"
+                ajax_category = "travel"
             else:
-                api_category = "national-deal"
+                ajax_category = "national-deal"
         else:
-            api_category = region_or_deal_type
+            ajax_category = region_or_deal_type
 
-        base_url = f"{base_url}{api_category}/{category}/{subcategory}/{product_id}?page=0&pageSize={1}&offset=0"
+        base_url = f"{base_url}{ajax_category}/{category}/{subcategory}/{product_id}?page=0&pageSize={1}&offset=0"
         return base_url
     else:
         return None 
