@@ -12,12 +12,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain.chat_models import init_chat_model
 from langchain_openai import OpenAIEmbeddings
 from qdrant_client import models
+from langchain_experimental.graph_transformers import LLMGraphTransformer
+import networkx as nx
+import matplotlib.pyplot as plt
 
-if not os.environ.get("OPENAI_API_KEY"):
-  os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
-
-if not os.environ.get("OPENAI_API_KEY"):
-  os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
 
 llm = init_chat_model("gpt-4o-mini", model_provider="openai")
 
@@ -32,6 +30,8 @@ class RAG:
         self.collection_name = collection_name
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         self.vector_store = self.create_vector_store()
+        self.llm_graph_transformer = LLMGraphTransformer(llm=llm)
+        self.knowledge_graph = nx.DiGraph()
     
     def create_vector_store(self) -> Qdrant:
         """Enhanced vector store with better similarity settings"""
@@ -155,11 +155,36 @@ class RAG:
                             )
                             documents.append(doc)
             
+            self.update_graph(self.llm_graph_transformer.convert_to_graph_documents(documents))
             return documents
             
         except Exception as e:
             print(f"Error processing file: {str(e)}")
             return []
+
+    def update_graph(self, documents):
+        print(f"graph documents: {documents}")
+        for graph_doc in documents:
+            for node in graph_doc.nodes:
+                self.knowledge_graph.add_node(node.id, node_type=node.type)
+            
+            for edge in graph_doc.relationships:
+                self.knowledge_graph.add_edge(edge.source.id, edge.target.id, relation=edge.type)
+        # self.visualize_graph(self.knowledge_graph)
+
+
+    # def visualize_graph(self, knowledge_graph):
+    #     plt.figure(figsize=(12, 8))
+        
+    #     pos = nx.spring_layout(knowledge_graph)  # Layout for visualization
+    #     nx.draw(knowledge_graph, pos, with_labels=True, node_color='lightblue', edge_color='gray', node_size=3000, font_size=10)
+
+    #     edge_labels = nx.get_edge_attributes(knowledge_graph, 'relation')
+    #     nx.draw_networkx_edge_labels(knowledge_graph, pos, edge_labels=edge_labels, font_size=8)
+        
+    #     plt.title("Knowledge Graph Visualization")
+    #     plt.show()
+
 
     def query(self, query: str, deal_id: Optional[str] = None, k: int = 5) -> List[Document]:
         """Enhanced query method with better context retrieval"""
