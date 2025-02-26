@@ -2,7 +2,7 @@ import os
 from typing import List, Optional
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
-from langchain_community.vectorstores import FAISS
+from langchain_community.vectorstores import Qdrant
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.tools import tool
 from langgraph.graph import MessagesState, StateGraph, END
@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from langgraph.checkpoint.memory import MemorySaver
 from langchain.chat_models import init_chat_model
 from langchain_openai import OpenAIEmbeddings
+from qdrant_client import models
 
 if not os.environ.get("OPENAI_API_KEY"):
   os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
@@ -26,32 +27,28 @@ memory = MemorySaver()
 class RAG:
     def __init__(
         self,
-        vector_store_path: str = "faiss_index",
+        collection_name: str = "wowcher_deals",
     ):
-        self.vector_store_path = vector_store_path
-        
+        self.collection_name = collection_name
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-        self.vector_store = self.load_or_create_vector_store()
+        self.vector_store = self.create_vector_store()
     
-    def load_or_create_vector_store(self) -> FAISS:
+    def create_vector_store(self) -> Qdrant:
         """Enhanced vector store with better similarity settings"""
         dummy_doc = Document(
             page_content="Wowcher Limited is the second largest British e-commerce deal of the day site in the United Kingdom and Ireland. ",
             metadata={"source": "wikipedia"}
         )
-        if os.path.exists(self.vector_store_path):
-            return FAISS.load_local(
-                self.vector_store_path,
-                self.embeddings,
-                allow_dangerous_deserialization=True
-            )
-        
-        return FAISS.from_documents(
-            [dummy_doc],
-            self.embeddings)
+
+        return Qdrant.from_documents(
+            documents=[dummy_doc],
+            embedding=self.embeddings,
+            location=":memory:",
+            collection_name=self.collection_name,
+        )
     
     
-    def process_file(self, data) -> List[Document]:
+    def create_documents(self, data) -> List[Document]:
         """Enhanced file processing with HTML content handling"""
         try:
             documents = []
@@ -167,11 +164,19 @@ class RAG:
     def query(self, query: str, deal_id: Optional[str] = None, k: int = 5) -> List[Document]:
         """Enhanced query method with better context retrieval"""
         if deal_id:
-            filter_dict = {"deal_id": int(deal_id)}
             return self.vector_store.similarity_search(
                 query,
                 k=k,
-                filter=filter_dict
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="metadata.deal_id",
+                            match=models.MatchValue(
+                                value=int(deal_id)
+                            ),
+                        ),
+                    ]
+                ),
             )
         return self.vector_store.similarity_search(
             query,
@@ -247,7 +252,7 @@ def query_or_respond(state: MessagesState):
         serialized, retrieved_info = retrieve(query, deal_id)
 
         
-        if len(retrieved_info) == 1 and retrieved_info[0].metadata.get("source") == "wikipedia":
+        if len(retrieved_info) == 0 or (len(retrieved_info) == 1 and retrieved_info[0].metadata.get("source") == "wikipedia"):
             return {"messages": [AIMessage(content="Sorry, I couldn't find relevant information for your query.")]}
 
         system_prompt = (

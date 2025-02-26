@@ -53,7 +53,7 @@ async def scrap_url(request: ScrapRequest):
         response.raise_for_status()
         data = response.json()
         
-        documents = rag_system.process_file(data)  
+        documents = rag_system.create_documents(data)  
         rag_system.vector_store.add_documents(documents)
                 
         return {"status": "success", "message": "Data added to knowledge base"}
